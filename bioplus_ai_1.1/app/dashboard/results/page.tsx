@@ -7,9 +7,10 @@ import { useRouter } from 'next/navigation';
 interface Diagnosis {
   condition: string;
   confidence: number;
+  similarity: number;
   recommendations: Array<{
     text: string;
-    type: 'urgent' | 'important' | 'general';
+    urgency: 'low' | 'medium' | 'high';
   }>;
 }
 
@@ -27,8 +28,17 @@ export default function ResultsPage() {
   useEffect(() => {
     const fetchDiagnosis = async () => {
       try {
+        // Get stored diagnosis
+        const storedDiagnosis = localStorage.getItem('bioplus_diagnosis');
+        if (storedDiagnosis) {
+          const diagnosisData = JSON.parse(storedDiagnosis);
+          setDiagnosis(diagnosisData);
+          setIsLoading(false);
+          return;
+        }
+
         // Get stored responses
-        const storedResponses = localStorage.getItem('assessmentResponses');
+        const storedResponses = localStorage.getItem('bioplus_responses');
         if (!storedResponses) {
           setError('No assessment data found');
           setIsLoading(false);
@@ -52,11 +62,13 @@ export default function ResultsPage() {
         }
 
         const data = await response.json();
-        if (!data || !data.condition || typeof data.confidence !== 'number') {
+        if (!data || !data.condition || typeof data.confidence !== 'number' || typeof data.similarity !== 'number') {
           throw new Error('Invalid diagnosis data received');
         }
 
         setDiagnosis(data);
+        // Store the diagnosis for future use
+        localStorage.setItem('bioplus_diagnosis', JSON.stringify(data));
       } catch (error) {
         console.error('Error:', error);
         setError(error instanceof Error ? error.message : 'Failed to load diagnosis. Please try again.');
@@ -178,6 +190,7 @@ export default function ResultsPage() {
         <ResultCard
           condition={diagnosis.condition}
           confidence={diagnosis.confidence}
+          similarity={diagnosis.similarity}
           recommendations={diagnosis.recommendations}
           onSaveResult={handleSaveResult}
         />

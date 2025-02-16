@@ -53,7 +53,8 @@ const STORAGE_KEYS = {
   SYMPTOM: 'bioplus_symptom',
   QUESTIONS: 'bioplus_questions',
   RESPONSES: 'bioplus_responses',
-  CURRENT_STEP: 'bioplus_current_step'
+  CURRENT_STEP: 'bioplus_current_step',
+  DIAGNOSIS: 'bioplus_diagnosis'
 };
 
 const initialCategories: Category[] = [
@@ -353,6 +354,30 @@ export default function QuestionsPage() {
       } else if (allAreasAssessed && isPhase2) {
         // Save responses to localStorage before redirecting
         localStorage.setItem(STORAGE_KEYS.RESPONSES, JSON.stringify(updatedResponses));
+        
+        try {
+          // Send responses to diagnosis endpoint
+          const diagnosisResponse = await fetch('/api/diagnose', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              responses: updatedResponses
+            }),
+          });
+
+          if (!diagnosisResponse.ok) {
+            throw new Error('Failed to get diagnosis');
+          }
+
+          const diagnosisResult = await diagnosisResponse.json();
+          localStorage.setItem(STORAGE_KEYS.DIAGNOSIS, JSON.stringify(diagnosisResult));
+        } catch (error) {
+          console.error('Diagnosis error:', error);
+          setError('Failed to process diagnosis. Please try again.');
+          return;
+        }
         
         if (mounted) {
           router.push('/dashboard/results');
