@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import styles from './styles.module.css';
 
 interface Category {
   title: string;
@@ -33,6 +34,27 @@ interface ChatGPTResponse {
   totalPredictedQuestions?: number;
   currentQuestionNumber?: number;
 }
+
+interface StoredQuestion {
+  text: string;
+  options: string[];
+  timestamp: number;
+}
+
+interface StoredResponse {
+  question: string;
+  answer: string;
+  timestamp: number;
+  questionData: StoredQuestion;
+}
+
+const STORAGE_KEYS = {
+  CATEGORY: 'bioplus_category',
+  SYMPTOM: 'bioplus_symptom',
+  QUESTIONS: 'bioplus_questions',
+  RESPONSES: 'bioplus_responses',
+  CURRENT_STEP: 'bioplus_current_step'
+};
 
 const initialCategories: Category[] = [
   {
@@ -95,18 +117,19 @@ const LoadingAnimation = ({ message = "Analyzing...", inline = false }: { messag
 
 export default function QuestionsPage() {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedSymptom, setSelectedSymptom] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [responses, setResponses] = useState<Response[]>([]);
+  const [responses, setResponses] = useState<StoredResponse[]>([]);
   const [followUpQuestions, setFollowUpQuestions] = useState<Question[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [customSymptom, setCustomSymptom] = useState('');
   const [isOtherSelected, setIsOtherSelected] = useState(false);
+  const [storedQuestions, setStoredQuestions] = useState<StoredQuestion[]>([]);
   const [isPhase2, setIsPhase2] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const [totalPredictedQuestions, setTotalPredictedQuestions] = useState(0);
   const [currentQuestionNumber, setCurrentQuestionNumber] = useState(0);
   const [assessmentProgress, setAssessmentProgress] = useState<AssessmentAreas>({
@@ -125,7 +148,7 @@ export default function QuestionsPage() {
   useEffect(() => {
     if (!mounted) return;
 
-    const storedResponses = localStorage.getItem('assessmentResponses');
+    const storedResponses = localStorage.getItem(STORAGE_KEYS.RESPONSES);
     if (storedResponses) {
       try {
         const parsedResponses = JSON.parse(storedResponses);
@@ -135,8 +158,8 @@ export default function QuestionsPage() {
         const lastResponse = parsedResponses[parsedResponses.length - 1];
         if (lastResponse) {
           // Extract category and symptom from stored data
-          const storedCategory = localStorage.getItem('selectedCategory');
-          const storedSymptom = localStorage.getItem('selectedSymptom');
+          const storedCategory = localStorage.getItem(STORAGE_KEYS.CATEGORY);
+          const storedSymptom = localStorage.getItem(STORAGE_KEYS.SYMPTOM);
           
           if (storedCategory && storedSymptom) {
             setSelectedCategory(storedCategory);
@@ -155,11 +178,11 @@ export default function QuestionsPage() {
   }, [mounted]);
 
   const fetchNextQuestion = async (
-    currentResponses: Response[], 
+    currentResponses: StoredResponse[], 
     category: string, 
     symptom: string, 
     phase2: boolean
-  ) => {
+  ): Promise<ChatGPTResponse> => {
     try {
       const response = await fetch('/api/chatgpt', {
         method: 'POST',
@@ -179,6 +202,7 @@ export default function QuestionsPage() {
       }
 
       const data: ChatGPTResponse = await response.json();
+      
       if (!data.questions || !Array.isArray(data.questions)) {
         throw new Error('Invalid response format from server');
       }
@@ -198,15 +222,18 @@ export default function QuestionsPage() {
       if (data.assessedAreas && !phase2) {
         setAssessmentProgress(data.assessedAreas);
       }
+
+      return data;
     } catch (error) {
       console.error('Error:', error);
       setError(error instanceof Error ? error.message : 'Failed to get follow-up questions');
+      throw error;
     }
   };
 
   const handleCategorySelection = (category: string) => {
     setSelectedCategory(category);
-    localStorage.setItem('selectedCategory', category);
+    localStorage.setItem(STORAGE_KEYS.CATEGORY, category);
     setCurrentStep(1);
   };
 
@@ -237,7 +264,13 @@ export default function QuestionsPage() {
       // Add the current response
       const updatedResponses = [...responses, { 
         question: currentQuestion.text,
-        answer: answer
+        answer: answer,
+        timestamp: Date.now(),
+        questionData: {
+          text: currentQuestion.text,
+          options: currentQuestion.options,
+          timestamp: Date.now()
+        }
       }];
       setResponses(updatedResponses);
 
@@ -319,7 +352,7 @@ export default function QuestionsPage() {
         return;
       } else if (allAreasAssessed && isPhase2) {
         // Save responses to localStorage before redirecting
-        localStorage.setItem('assessmentResponses', JSON.stringify(updatedResponses));
+        localStorage.setItem(STORAGE_KEYS.RESPONSES, JSON.stringify(updatedResponses));
         
         if (mounted) {
           router.push('/dashboard/results');
@@ -354,7 +387,7 @@ export default function QuestionsPage() {
     setIsLoading(true);
     setError(null);
     setSelectedSymptom(selectedSymptom);
-    localStorage.setItem('selectedSymptom', selectedSymptom);
+    localStorage.setItem(STORAGE_KEYS.SYMPTOM, selectedSymptom);
     setCustomSymptom('');
     setIsOtherSelected(false);
     setCurrentStep(2);
@@ -375,6 +408,20 @@ export default function QuestionsPage() {
     // Keep responses up to the selected index
     const updatedResponses = responses.slice(0, index);
     setResponses(updatedResponses);
+    localStorage.setItem(STORAGE_KEYS.RESPONSES, JSON.stringify(updatedResponses));
+
+    // Get the question data from the stored response
+    const targetResponse = responses[index];
+    if (targetResponse && targetResponse.questionData) {
+      setFollowUpQuestions([{
+        text: targetResponse.questionData.text,
+        options: targetResponse.questionData.options
+      }]);
+      setCurrentQuestionIndex(0);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -404,6 +451,16 @@ export default function QuestionsPage() {
         throw new Error('Invalid response format from server');
       }
 
+      // Store the new questions
+      const newStoredQuestions = data.questions.map(q => ({
+        text: q.text,
+        options: q.options,
+        timestamp: Date.now()
+      }));
+      
+      setStoredQuestions(prev => [...prev, ...newStoredQuestions]);
+      localStorage.setItem(STORAGE_KEYS.QUESTIONS, JSON.stringify(newStoredQuestions));
+
       if (data.assessedAreas) {
         setAssessmentProgress(data.assessedAreas);
       }
@@ -425,7 +482,12 @@ export default function QuestionsPage() {
     setResponses(prev => [...prev, {
       question,
       answer,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      questionData: {
+        text: question,
+        options: [],
+        timestamp: Date.now()
+      }
     }]);
   };
 
@@ -449,16 +511,24 @@ export default function QuestionsPage() {
     setCurrentQuestionIndex(0);
   };
 
+  const formatTimestamp = (timestamp: number) => {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
   const QuestionHistory = () => (
-    <div className="mt-6 space-y-4">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Response History</h3>
+    <div className="space-y-4">
       <div className="space-y-4 relative before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-blue-100">
         {selectedCategory && (
           <div className="relative pl-8 transition-all duration-300">
             <div className="absolute left-0 top-3 w-4 h-4 rounded-full bg-blue-100 border-2 border-blue-500" />
             <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hover:border-blue-200 hover:shadow-md transition-all duration-300 group">
-              <div className="flex justify-between items-start gap-4">
-                <div className="flex-1 space-y-2">
+              <div className="flex justify-between items-start gap-4 flex-wrap">
+                <div className="flex-1 min-w-0 space-y-2">
                   <p className="text-sm font-medium text-gray-900 group-hover:text-blue-600 transition-colors duration-200">
                     How are you feeling?
                   </p>
@@ -468,7 +538,7 @@ export default function QuestionsPage() {
                 </div>
                 <button
                   onClick={() => handleEditInitialQuestion(0)}
-                  className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 hover:text-blue-700 transition-colors duration-200"
+                  className="flex items-center shrink-0 gap-1 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 hover:text-blue-700 transition-colors duration-200"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -483,8 +553,8 @@ export default function QuestionsPage() {
           <div className="relative pl-8 transition-all duration-300">
             <div className="absolute left-0 top-3 w-4 h-4 rounded-full bg-blue-100 border-2 border-blue-500" />
             <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hover:border-blue-200 hover:shadow-md transition-all duration-300 group">
-              <div className="flex justify-between items-start gap-4">
-                <div className="flex-1 space-y-2">
+              <div className="flex justify-between items-start gap-4 flex-wrap">
+                <div className="flex-1 min-w-0 space-y-2">
                   <p className="text-sm font-medium text-gray-900 group-hover:text-blue-600 transition-colors duration-200">
                     What symptoms are you experiencing?
                   </p>
@@ -494,7 +564,7 @@ export default function QuestionsPage() {
                 </div>
                 <button
                   onClick={() => handleEditInitialQuestion(1)}
-                  className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 hover:text-blue-700 transition-colors duration-200"
+                  className="flex items-center shrink-0 gap-1 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 hover:text-blue-700 transition-colors duration-200"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -512,8 +582,8 @@ export default function QuestionsPage() {
           >
             <div className="absolute left-0 top-3 w-4 h-4 rounded-full bg-blue-100 border-2 border-blue-500" />
             <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hover:border-blue-200 hover:shadow-md transition-all duration-300 group">
-              <div className="flex justify-between items-start gap-4">
-                <div className="flex-1 space-y-2">
+              <div className="flex justify-between items-start gap-4 flex-wrap">
+                <div className="flex-1 min-w-0 space-y-2">
                   <p className="text-sm font-medium text-gray-900 group-hover:text-blue-600 transition-colors duration-200">
                     {response.question}
                   </p>
@@ -525,13 +595,13 @@ export default function QuestionsPage() {
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      {new Date(response.timestamp).toLocaleTimeString()}
+                      {formatTimestamp(response.timestamp)}
                     </p>
                   )}
                 </div>
                 <button
                   onClick={() => handleGoBackToQuestion(index)}
-                  className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 hover:text-blue-700 transition-colors duration-200"
+                  className="flex items-center shrink-0 gap-1 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 hover:text-blue-700 transition-colors duration-200"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -655,7 +725,7 @@ export default function QuestionsPage() {
                           value={customSymptom}
                           onChange={(e) => setCustomSymptom(e.target.value)}
                           placeholder="Type your symptom..."
-                          className="flex-1 px-6 py-4 bg-white border-2 border-transparent rounded-lg shadow-sm text-base font-medium text-left transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                          className="flex-1 px-6 py-4 bg-white border-2 border-transparent rounded-lg shadow-sm text-base font-medium text-left transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                         />
                         <button
                           onClick={handleCustomSymptomSubmit}
@@ -900,8 +970,16 @@ export default function QuestionsPage() {
 
                 {/* Question History panel - show after category selection */}
                 {currentStep >= 1 && (
-                  <div className="lg:col-span-1">
-                    <QuestionHistory />
+                  <div className="lg:col-span-1 h-full">
+                    <div className="w-full max-w-3xl mx-auto h-full flex flex-col">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Response History</h3>
+                      {/* Scrollable container for responses */}
+                      <div className={`flex-1 ${styles['custom-scrollbar']}`}>
+                        <div className={`h-[calc(100vh-4rem)] overflow-y-auto pr-4`}>
+                          <QuestionHistory />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
