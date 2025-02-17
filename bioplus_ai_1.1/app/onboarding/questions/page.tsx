@@ -976,9 +976,7 @@ export default function QuestionsPage() {
                   {currentQuestion.options.map((option, idx) => (
                     <div
                       key={idx}
-                      className="transform transition-all duration-500 ease-in-out opacity-0"
-                      style={{ animationDelay: `${idx * 100}ms`, animationFillMode: 'forwards' }}
-                      className={`animate-fade-in-up [animation-delay:${idx * 100}ms] [animation-fill-mode:forwards]`}
+                      className={`transform transition-all duration-500 ease-in-out opacity-0 animate-fade-in-up [animation-delay:${idx * 100}ms]`}
                     >
                       {option === 'Other' ? (
                         isOtherSelected ? (

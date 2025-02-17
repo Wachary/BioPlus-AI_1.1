@@ -24,7 +24,7 @@ export default function HistoryPage() {
         </div>
         <h2 className="text-2xl font-semibold text-gray-900 mb-2">Feature Coming Soon</h2>
         <p className="text-gray-600 mb-4">
-          We're working hard to bring you a comprehensive history tracking feature.
+          We&apos;re working hard to bring you a comprehensive history tracking feature.
           <br />
           Check back soon for updates!
         </p>

@@ -121,7 +121,7 @@ export default function ResultsPage() {
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-gray-900">Your Assessment Results</h1>
           <p className="mt-2 text-gray-600">
-            Based on your responses, we've identified the following potential diagnoses:
+            Based on your responses, we&apos;ve identified the following potential diagnoses:
           </p>
         </div>
 
