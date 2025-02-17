@@ -73,7 +73,7 @@ export default function ResultsPage() {
   const handleStartNewAssessment = () => {
     localStorage.removeItem('bioplus_diagnosis');
     localStorage.removeItem('bioplus_responses');
-    router.push('/onboarding/questions');
+    router.push('/onboarding/questions?fromDiagnosis=true');
   };
 
   if (isLoading) {

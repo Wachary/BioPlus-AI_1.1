@@ -55,7 +55,14 @@ const STORAGE_KEYS = {
   QUESTIONS: 'bioplus_questions',
   RESPONSES: 'bioplus_responses',
   CURRENT_STEP: 'bioplus_current_step',
-  DIAGNOSIS: 'bioplus_diagnosis'
+  DIAGNOSIS: 'bioplus_diagnosis',
+  PHASE: 'bioplus_phase'
+};
+
+const clearStorageData = () => {
+  Object.values(STORAGE_KEYS).forEach(key => {
+    localStorage.removeItem(key);
+  });
 };
 
 const initialCategories: Category[] = [
@@ -147,36 +154,60 @@ export default function QuestionsPage() {
     setMounted(true);
   }, []);
 
+  const clearAssessmentData = () => {
+    // Clear localStorage
+    clearStorageData();
+    
+    // Clear all state
+    setResponses([]);
+    setFollowUpQuestions([]);
+    setCurrentQuestionIndex(0);
+    setSelectedCategory(null);
+    setSelectedSymptom(null);
+    setCustomSymptom('');
+    setIsOtherSelected(false);
+    setStoredQuestions([]);
+    setIsPhase2(false);
+    setTotalPredictedQuestions(0);
+    setCurrentQuestionNumber(0);
+    setAssessmentProgress({
+      location: false,
+      characterSeverity: false,
+      timing: false,
+      triggers: false,
+      riskFactors: false
+    });
+  };
+
   // Load previous responses if they exist
   useEffect(() => {
-    if (!mounted) return;
-
-    const storedResponses = localStorage.getItem(STORAGE_KEYS.RESPONSES);
-    if (storedResponses) {
-      try {
-        const parsedResponses = JSON.parse(storedResponses);
-        setResponses(parsedResponses);
-        
-        // Get the last response to determine category and symptom
-        const lastResponse = parsedResponses[parsedResponses.length - 1];
-        if (lastResponse) {
-          // Extract category and symptom from stored data
-          const storedCategory = localStorage.getItem(STORAGE_KEYS.CATEGORY);
-          const storedSymptom = localStorage.getItem(STORAGE_KEYS.SYMPTOM);
-          
-          if (storedCategory && storedSymptom) {
-            setSelectedCategory(storedCategory);
-            setSelectedSymptom(storedSymptom);
-            setCurrentStep(2); // Skip to follow-up questions
-            setIsPhase2(true); // Continue in phase 2
-            
-            // Fetch next question based on previous responses
-            fetchNextQuestion(parsedResponses, storedCategory, storedSymptom, true);
-          }
-        }
-      } catch (e) {
-        console.error('Error loading previous responses:', e);
+    if (mounted) {
+      // Clear storage if we're starting a new assessment or coming from a completed diagnosis
+      const fromDiagnosis = new URLSearchParams(window.location.search).get('fromDiagnosis');
+      const isNewAssessment = new URLSearchParams(window.location.search).get('new') === 'true';
+      
+      if (fromDiagnosis === 'true' || isNewAssessment) {
+        clearAssessmentData();
+        // Remove the query parameters to prevent clearing on subsequent renders
+        window.history.replaceState({}, '', window.location.pathname);
+        return;
       }
+
+      const storedCategory = localStorage.getItem(STORAGE_KEYS.CATEGORY);
+      const storedSymptom = localStorage.getItem(STORAGE_KEYS.SYMPTOM);
+      const storedResponses = localStorage.getItem(STORAGE_KEYS.RESPONSES);
+      const storedPhase = localStorage.getItem(STORAGE_KEYS.PHASE);
+
+      if (storedCategory) setSelectedCategory(storedCategory);
+      if (storedSymptom) setSelectedSymptom(storedSymptom);
+      if (storedResponses) {
+        try {
+          setResponses(JSON.parse(storedResponses));
+        } catch (error) {
+          console.error('Error parsing stored responses:', error);
+        }
+      }
+      if (storedPhase) setIsPhase2(storedPhase === 'true');
     }
   }, [mounted]);
 
@@ -215,10 +246,12 @@ export default function QuestionsPage() {
       
       // Update progress tracking
       if (data.totalPredictedQuestions) {
-        setTotalPredictedQuestions(data.totalPredictedQuestions);
+        // Store the raw predicted questions count
+        setTotalPredictedQuestions(Math.max(1, data.totalPredictedQuestions));
       }
       if (data.currentQuestionNumber) {
-        setCurrentQuestionNumber(data.currentQuestionNumber);
+        // Store the raw current question number
+        setCurrentQuestionNumber(Math.max(0, data.currentQuestionNumber));
       }
       
       // Update assessment progress if in phase 1
@@ -236,8 +269,8 @@ export default function QuestionsPage() {
 
   const handleCategorySelection = (category: string) => {
     setSelectedCategory(category);
-    localStorage.setItem(STORAGE_KEYS.CATEGORY, category);
     setCurrentStep(1);
+    localStorage.setItem(STORAGE_KEYS.CATEGORY, category);
   };
 
   const handleCustomAnswerSubmit = () => {
@@ -303,10 +336,12 @@ export default function QuestionsPage() {
 
       // Update progress tracking
       if (data.totalPredictedQuestions) {
-        setTotalPredictedQuestions(data.totalPredictedQuestions);
+        // Store the raw predicted questions count
+        setTotalPredictedQuestions(Math.max(1, data.totalPredictedQuestions));
       }
       if (data.currentQuestionNumber) {
-        setCurrentQuestionNumber(data.currentQuestionNumber);
+        // Store the raw current question number
+        setCurrentQuestionNumber(Math.max(0, data.currentQuestionNumber));
       }
 
       // Update assessment progress
@@ -319,8 +354,10 @@ export default function QuestionsPage() {
         Object.values(data.assessedAreas).every(area => area) : 
         false;
       
+      const { current, total } = getAdjustedQuestionNumbers();
       const shouldTransitionToPhase2 = allAreasAssessed && !isPhase2;
-      const shouldFinishAssessment = isPhase2 && data.readyForDiagnosis === true;
+      const readyForDiagnosis = isPhase2 && data.readyForDiagnosis === true;
+      const shouldFinishAssessment = readyForDiagnosis && current >= Math.min(8, total);
 
       console.log('Assessment state:', {
         isPhase2,
@@ -328,7 +365,8 @@ export default function QuestionsPage() {
         shouldTransitionToPhase2,
         shouldFinishAssessment,
         readyForDiagnosis: data.readyForDiagnosis,
-        responseCount: updatedResponses.length
+        currentQuestion: current,
+        totalQuestions: total
       });
       
       if (shouldTransitionToPhase2) {
@@ -358,46 +396,53 @@ export default function QuestionsPage() {
 
         // Update progress for phase 2
         if (phase2Data.totalPredictedQuestions) {
-          setTotalPredictedQuestions(phase2Data.totalPredictedQuestions);
+          setTotalPredictedQuestions(Math.max(1, phase2Data.totalPredictedQuestions));
         }
         if (phase2Data.currentQuestionNumber) {
-          setCurrentQuestionNumber(phase2Data.currentQuestionNumber);
+          setCurrentQuestionNumber(Math.max(0, phase2Data.currentQuestionNumber));
         }
 
         setFollowUpQuestions(phase2Data.questions);
         setCurrentQuestionIndex(0);
         return;
       } else if (shouldFinishAssessment) {
-        // Save responses to localStorage before redirecting
-        localStorage.setItem(STORAGE_KEYS.RESPONSES, JSON.stringify(updatedResponses));
         setIsDiagnosing(true);
-        
         try {
-          // Send responses to diagnosis endpoint
-          const diagnosisResponse = await fetch('/api/diagnose', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              responses: updatedResponses
-            }),
-          });
-
-          if (!diagnosisResponse.ok) {
-            throw new Error('Failed to get diagnosis');
-          }
-
-          const diagnosisResult = await diagnosisResponse.json();
-          localStorage.setItem(STORAGE_KEYS.DIAGNOSIS, JSON.stringify(diagnosisResult));
-        } catch (error) {
-          console.error('Diagnosis error:', error);
-          setError('Failed to process diagnosis. Please try again.');
-          return;
-        }
-        
-        if (mounted) {
+          // Save responses to localStorage before redirecting
+          localStorage.setItem(STORAGE_KEYS.RESPONSES, JSON.stringify(updatedResponses));
+          
+          // Navigate to results - the results page will handle the diagnosis API call
           router.push('/dashboard/results');
+          
+          // Clear other assessment data
+          Object.keys(STORAGE_KEYS).forEach(key => {
+            if (key !== 'RESPONSES') {
+              localStorage.removeItem(STORAGE_KEYS[key]);
+            }
+          });
+          
+          // Reset state except responses
+          setFollowUpQuestions([]);
+          setCurrentQuestionIndex(0);
+          setSelectedCategory(null);
+          setSelectedSymptom(null);
+          setCustomSymptom('');
+          setIsOtherSelected(false);
+          setStoredQuestions([]);
+          setIsPhase2(false);
+          setTotalPredictedQuestions(0);
+          setCurrentQuestionNumber(0);
+          setAssessmentProgress({
+            location: false,
+            characterSeverity: false,
+            timing: false,
+            triggers: false,
+            riskFactors: false
+          });
+        } catch (error) {
+          console.error('Error navigating to diagnosis:', error);
+          setError('Failed to proceed to diagnosis. Please try again.');
+          setIsDiagnosing(false);
         }
         return;
       }
@@ -441,17 +486,21 @@ export default function QuestionsPage() {
     }
   };
 
+  const getAdjustedQuestionNumbers = () => {
+    // Add 2 to account for category and symptom selection
+    const adjustedCurrent = currentStep === 0 ? 0 : currentStep === 1 ? 1 : currentQuestionNumber + 2;
+    const adjustedTotal = totalPredictedQuestions + 2;
+    return { current: adjustedCurrent, total: adjustedTotal };
+  };
+
   const calculateProgress = () => {
+    const { current, total } = getAdjustedQuestionNumbers();
+    
+    if (total === 0) return 0;
     if (isDiagnosing) return 100;
-    if (!isPhase2) {
-      // In phase 1, progress is based on assessed areas
-      const assessedCount = Object.values(assessmentProgress).filter(Boolean).length;
-      return Math.round((assessedCount / 5) * 50); // Phase 1 is 0-50%
-    } else {
-      // In phase 2, progress is based on response count and readyForDiagnosis
-      const responseProgress = Math.min(((responses.length - 5) / 5) * 50, 50); // Phase 2 is 50-100%
-      return 50 + responseProgress;
-    }
+    
+    // Calculate progress as a percentage based on current question number
+    return Math.min(Math.round((current / total) * 100), 100);
   };
 
   const handleGoBackToQuestion = async (index: number) => {
@@ -908,7 +957,10 @@ export default function QuestionsPage() {
                   ></div>
                 </div>
                 <div className="text-sm text-gray-500 text-center mt-2">
-                  Question {currentQuestionNumber} of ~{totalPredictedQuestions}
+                  {(() => {
+                    const { current, total } = getAdjustedQuestionNumbers();
+                    return `Question ${current} of ~${total}`;
+                  })()}
                 </div>
               </div>
 

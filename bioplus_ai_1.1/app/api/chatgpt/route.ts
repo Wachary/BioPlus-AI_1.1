@@ -69,10 +69,68 @@ function summarizeResponses(responses: any[]) {
   return summary;
 }
 
+// Helper function to check for contradictions in responses
+function findContradictions(responses: any[]) {
+  const contradictions = [];
+  
+  // Common contradiction patterns to check
+  const patterns = {
+    timing: {
+      recent: ['just started', 'began recently', 'new', 'started today', 'since yesterday'],
+      chronic: ['years', 'months', 'chronic', 'long time', 'always had']
+    },
+    severity: {
+      mild: ['mild', 'slight', 'minor', 'barely', 'little'],
+      severe: ['severe', 'extreme', 'worst', 'intense', 'unbearable']
+    },
+    frequency: {
+      rare: ['rarely', 'occasionally', 'sometimes', 'few times'],
+      constant: ['constant', 'always', 'continuous', 'persistent', 'all the time']
+    },
+    improvement: {
+      better: ['improves', 'gets better', 'relieves', 'helps', 'reduces'],
+      worse: ['worsens', 'gets worse', 'aggravates', 'increases', 'intensifies']
+    }
+  };
+
+  // Helper function to check if text matches any pattern
+  const matchesPattern = (text: string, patterns: string[]) => {
+    return patterns.some(pattern => text.toLowerCase().includes(pattern));
+  };
+
+  // Check each response against others for contradictions
+  for (let i = 0; i < responses.length; i++) {
+    for (let j = i + 1; j < responses.length; j++) {
+      const response1 = responses[i].answer.toLowerCase();
+      const response2 = responses[j].answer.toLowerCase();
+
+      // Check each pattern category for contradictions
+      Object.entries(patterns).forEach(([category, categoryPatterns]) => {
+        const matches1 = Object.entries(categoryPatterns).find(([_, patterns]) => 
+          matchesPattern(response1, patterns)
+        );
+        const matches2 = Object.entries(categoryPatterns).find(([_, patterns]) => 
+          matchesPattern(response2, patterns)
+        );
+
+        if (matches1 && matches2 && matches1[0] !== matches2[0]) {
+          contradictions.push({
+            category,
+            response1: responses[i],
+            response2: responses[j]
+          });
+        }
+      });
+    }
+  }
+
+  return contradictions;
+}
+
 // Helper function to determine if we have enough information for diagnosis
 function isReadyForDiagnosis(responses: any[], assessedAreas: any) {
-  // Must have at least 5 responses
-  if (!responses || responses.length < 5) {
+  // Must have at least 8 responses for a thorough assessment
+  if (!responses || responses.length < 8) {
     return false;
   }
 
@@ -91,11 +149,11 @@ function isReadyForDiagnosis(responses: any[], assessedAreas: any) {
   };
 
   const keywords = {
-    location: ['where', 'location', 'area', 'spot', 'place', 'side'],
-    characterSeverity: ['severity', 'pain level', 'intensity', 'type of', 'nature of', 'character', 'how severe', 'describe the'],
-    timing: ['when', 'how long', 'duration', 'often', 'frequency', 'start', 'began'],
-    triggers: ['trigger', 'worse', 'better', 'improve', 'aggravate', 'affect', 'impact'],
-    riskFactors: ['history', 'condition', 'medical', 'risk', 'family', 'previous', 'existing']
+    location: ['where', 'location', 'area', 'spot', 'place', 'side', 'specific', 'exactly'],
+    characterSeverity: ['severity', 'pain level', 'intensity', 'type of', 'nature of', 'character', 'how severe', 'describe the', 'quality', 'feels like'],
+    timing: ['when', 'how long', 'duration', 'often', 'frequency', 'start', 'began', 'pattern', 'time of day', 'seasonal'],
+    triggers: ['trigger', 'worse', 'better', 'improve', 'aggravate', 'affect', 'impact', 'factors', 'activities', 'foods', 'environmental'],
+    riskFactors: ['history', 'condition', 'medical', 'risk', 'family', 'previous', 'existing', 'medication', 'allergies', 'lifestyle']
   };
 
   // Count responses for each area
@@ -108,8 +166,15 @@ function isReadyForDiagnosis(responses: any[], assessedAreas: any) {
     });
   });
 
-  // Each area should have at least one detailed response
-  return Object.values(areaResponses).every(count => count > 0);
+  // Each area should have at least two detailed responses for thoroughness
+  const hasEnoughResponses = Object.values(areaResponses).every(count => count >= 2);
+  
+  // Check for contradictions
+  const contradictions = findContradictions(responses);
+  const hasContradictions = contradictions.length > 0;
+
+  // Only ready if we have enough responses and no contradictions
+  return hasEnoughResponses && !hasContradictions;
 }
 
 export async function POST(req: Request) {
@@ -147,31 +212,27 @@ export async function POST(req: Request) {
       Ready for diagnosis: ${readyForDiagnosis}
 
       In Phase 1, focus on gathering basic information about all assessment areas.
-      In Phase 2, ask detailed follow-up questions based on the initial responses.
-      Set readyForDiagnosis to true only when you have gathered enough detailed information for a diagnosis.
+      
+      In Phase 2:
+      1. Ask detailed follow-up questions based on the initial responses
+      2. If you detect any contradictions in the responses, ask clarifying questions to resolve them
+      3. Ensure you have at least 2 detailed responses for each assessment area
+      4. Pay special attention to severity, timing, and progression of symptoms
+      5. Verify any concerning or unusual combinations of symptoms
+      6. Set readyForDiagnosis to true ONLY when:
+         - You have gathered enough detailed information (at least 8 responses)
+         - You have at least 2 detailed responses for each assessment area
+         - There are no contradictions in the responses
+         - You have verified any unusual symptom combinations
+         - You are confident you have enough information for an accurate diagnosis
 
-      Guidelines for setting readyForDiagnosis:
-      1. Must have at least 5 total responses
-      2. Must have covered all assessment areas
-      3. Must have at least one detailed response in each area
-      4. Must be in Phase 2
-
-      Respond in the following JSON format:
+      Format response as JSON with:
       {
-        "questions": [{
-          "text": "question text",
-          "options": ["option1", "option2", "option3", "option4", "option5", "Other"]
-        }],
-        "assessedAreas": {
-          "location": boolean,
-          "characterSeverity": boolean,
-          "timing": boolean,
-          "triggers": boolean,
-          "riskFactors": boolean
-        },
+        "questions": [{"text": "question", "options": ["option1",...,"option5","Other"]}],
+        "assessedAreas": {"location": bool,...},
         "totalPredictedQuestions": number,
         "currentQuestionNumber": number,
-        "readyForDiagnosis": boolean
+        "readyForDiagnosis": bool
       }`
     };
 
@@ -232,17 +293,42 @@ export async function POST(req: Request) {
       }
 
       // Ensure each question has exactly 5 options plus "Other"
-      parsedResponse.questions = parsedResponse.questions.map((question: any) => {
+      parsedResponse.questions = await Promise.all(parsedResponse.questions.map(async (question: any) => {
         let options = Array.isArray(question.options) ? question.options : [];
         
         // Remove any "Other" options that ChatGPT might have included
-        options = options.filter(opt => !opt.toLowerCase().includes('other'));
+        options = options.filter((opt: string) => !opt.toLowerCase().includes('other'));
         
-        // If we have fewer than 5 options, add generic ones based on the assessment area
-        while (options.length < 5) {
-          options.push(`Option ${options.length + 1}`);
+        // If we have fewer than 5 options, ask ChatGPT to generate more
+        if (options.length < 5) {
+          const moreOptionsResponse = await openai.chat.completions.create({
+            model: "gpt-4",
+            messages: [
+              {
+                role: "system",
+                content: "You are helping to generate additional answer options for a medical assessment question. Provide options that are relevant to the question context. Return ONLY a JSON array of strings containing exactly the number of additional options needed, with no other text."
+              },
+              {
+                role: "user",
+                content: `Question: "${question.text}"\nExisting options: ${JSON.stringify(options)}\nNumber of additional options needed: ${5 - options.length}`
+              }
+            ],
+            temperature: 0.7
+          });
+
+          try {
+            const content = moreOptionsResponse.choices[0].message.content;
+            if (content) {
+              const additionalOptions = JSON.parse(content);
+              if (Array.isArray(additionalOptions)) {
+                options.push(...additionalOptions);
+              }
+            }
+          } catch (error) {
+            console.error('Error parsing additional options:', error);
+          }
         }
-        
+
         // If we have more than 5 options, keep only the first 5
         options = options.slice(0, 5);
         
@@ -250,15 +336,15 @@ export async function POST(req: Request) {
         options.push('Other');
         
         return {
-          text: question.text,
+          ...question,
           options: options
         };
-      });
+      }));
 
       // In phase 2, check if we have enough information for diagnosis
       if (isPhase2) {
         const responseCount = (previousResponses || []).length;
-        const hasEnoughResponses = responseCount >= 5; // Minimum responses needed
+        const hasEnoughResponses = responseCount >= 8; // Minimum responses needed
         const hasKeyAreas = assessedAreas && Object.values(assessedAreas).every(area => area);
         
         // Set readyForDiagnosis if we have enough information

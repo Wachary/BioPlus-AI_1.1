@@ -1,117 +1,35 @@
-import React from 'react';
-import Link from 'next/link';
+'use client';
 
-interface HistoryEntry {
-  id: string;
-  date: string;
-  primarySymptom: string;
-  diagnosis: {
-    condition: string;
-    confidence: number;
-  };
-}
+import React from 'react';
 
 export default function HistoryPage() {
-  const [history, setHistory] = React.useState<HistoryEntry[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    // TODO: Implement Supabase fetch
-    // For now, using mock data
-    setHistory([
-      {
-        id: '1',
-        date: '2025-02-02',
-        primarySymptom: 'Headache',
-        diagnosis: {
-          condition: 'Tension Headache',
-          confidence: 85
-        }
-      },
-      // Add more mock entries as needed
-    ]);
-    setIsLoading(false);
-  }, []);
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-3xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Assessment History
-          </h1>
-          <Link
-            href="/onboarding/questions"
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-gray-50">
+      <div className="text-center p-8">
+        <div className="mb-4">
+          <svg
+            className="mx-auto h-16 w-16 text-blue-500 animate-pulse"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            aria-hidden="true"
           >
-            New Assessment
-          </Link>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+            />
+          </svg>
         </div>
-
-        {history.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-lg shadow">
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No assessments yet</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Start your first health assessment to track your symptoms.
-            </p>
-          </div>
-        ) : (
-          <div className="bg-white shadow overflow-hidden sm:rounded-md">
-            <ul className="divide-y divide-gray-200">
-              {history.map((entry) => (
-                <li key={entry.id}>
-                  <div className="px-4 py-4 sm:px-6 hover:bg-gray-50">
-                    <div className="flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <p className="text-sm font-medium text-blue-600 truncate">
-                          {entry.diagnosis.condition}
-                        </p>
-                        <p className="mt-1 text-xs text-gray-500">
-                          Primary Symptom: {entry.primarySymptom}
-                        </p>
-                      </div>
-                      <div className="flex flex-col items-end">
-                        <p className="text-sm text-gray-900">
-                          {new Date(entry.date).toLocaleDateString()}
-                        </p>
-                        <p className={`mt-1 text-xs ${
-                          entry.diagnosis.confidence >= 90 ? 'text-red-600' :
-                          entry.diagnosis.confidence >= 70 ? 'text-orange-600' :
-                          'text-yellow-600'
-                        }`}>
-                          {entry.diagnosis.confidence}% confidence
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-2">
-                      <Link
-                        href={`/dashboard/results?id=${entry.id}`}
-                        className="text-sm text-blue-600 hover:text-blue-800"
-                      >
-                        View Details →
-                      </Link>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* Privacy Notice */}
-        <div className="mt-8 p-4 bg-gray-100 rounded-md">
-          <h4 className="text-sm font-medium text-gray-900">Privacy Notice</h4>
-          <p className="mt-1 text-sm text-gray-500">
-            Your health data is encrypted and stored securely. Only you can access your assessment history.
-          </p>
+        <h2 className="text-2xl font-semibold text-gray-900 mb-2">Feature Coming Soon</h2>
+        <p className="text-gray-600 mb-4">
+          We're working hard to bring you a comprehensive history tracking feature.
+          <br />
+          Check back soon for updates!
+        </p>
+        <div className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200">
+          🚀 Under Development
         </div>
       </div>
     </div>

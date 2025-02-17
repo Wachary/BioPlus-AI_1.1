@@ -1,9 +1,33 @@
 'use client';
 
 import React from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function HomePage() {
+  const router = useRouter();
+
+  const handleStartAssessment = () => {
+    // Clear any existing local storage data
+    const STORAGE_KEYS = {
+      CATEGORY: 'bioplus_category',
+      SYMPTOM: 'bioplus_symptom',
+      QUESTIONS: 'bioplus_questions',
+      RESPONSES: 'bioplus_responses',
+      CURRENT_STEP: 'bioplus_current_step',
+      DIAGNOSIS: 'bioplus_diagnosis',
+      PHASE: 'bioplus_phase'
+    };
+
+    Object.values(STORAGE_KEYS).forEach(key => {
+      localStorage.removeItem(key);
+    });
+
+    // Navigate to questions page
+    router.push('/onboarding/questions');
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <main>
@@ -14,16 +38,16 @@ export default function HomePage() {
               <span className="block text-blue-600">BioPlus AI</span>
             </h1>
             <p className="mt-3 max-w-md mx-auto text-base text-gray-500 sm:text-lg md:mt-5 md:text-xl md:max-w-3xl">
-              Your AI-powered health assessment tool. Get personalized health insights and recommendations in minutes.
+              Your AI-powered medical self-diagnosis tool. Get personalized health insights and recommendations in minutes.
             </p>
             <div className="mt-5 max-w-md mx-auto sm:flex sm:justify-center md:mt-8">
               <div className="rounded-md shadow">
-                <Link
-                  href="/onboarding/questions"
+                <button
+                  onClick={handleStartAssessment}
                   className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 md:py-4 md:text-lg md:px-10"
                 >
                   Start Assessment
-                </Link>
+                </button>
               </div>
               <div className="mt-3 rounded-md shadow sm:mt-0 sm:ml-3">
                 <Link

@@ -10,6 +10,15 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "BioPlus AI - Smart Health Assessment",
   description: "AI-powered health assessment tool for understanding your symptoms",
+  icons: {
+    icon: [
+      { url: '/favicon.ico' },
+      { url: '/logo.png', type: 'image/png' }
+    ],
+    apple: [
+      { url: '/logo.png' }
+    ]
+  }
 };
 
 export default function RootLayout({
