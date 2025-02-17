@@ -138,6 +138,12 @@ export async function findTopDiagnoses(responses: QuestionResponse[]): Promise<D
       condition: diagnosis.condition,
       similarity,
       confidence,
+      recommendations: [
+        {
+          text: "Please consult with a healthcare professional for a proper diagnosis.",
+          urgency: "medium" as const
+        }
+      ],
       responses: diagnosis.responses
     };
   });

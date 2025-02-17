@@ -275,6 +275,14 @@ export default function QuestionsPage() {
     localStorage.setItem(STORAGE_KEYS.CATEGORY, category);
   };
 
+  const handleCustomSymptomSubmit = () => {
+    if (!customSymptom.trim()) {
+      setError('Please enter your symptom');
+      return;
+    }
+    handleSymptomSelection(customSymptom);
+  };
+
   const handleCustomAnswerSubmit = () => {
     if (!customSymptom.trim()) {
       setError('Please provide your answer');
