@@ -79,6 +79,7 @@ jobs:
         working-directory: ./bioplus_ai_1.1
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          NEXT_PUBLIC_BASE_PATH: /BioPlus-AI_1.1
         run: ${{ steps.detect-package-manager.outputs.runner }} next build
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
