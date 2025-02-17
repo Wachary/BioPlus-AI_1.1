@@ -20,7 +20,7 @@ export function Navbar() {
             <div className="flex-shrink-0 flex items-center -ml-2">
               <Link href="/" className="flex items-center">
                 <Image
-                  src="/logo.png"
+                  src={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/logo.png`}
                   alt="BioPlus AI"
                   width={64}
                   height={64}
