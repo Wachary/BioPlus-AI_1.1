@@ -33,6 +33,7 @@ interface ChatGPTResponse {
   assessedAreas?: AssessmentAreas;
   totalPredictedQuestions?: number;
   currentQuestionNumber?: number;
+  readyForDiagnosis?: boolean;
 }
 
 interface StoredQuestion {
@@ -140,6 +141,7 @@ export default function QuestionsPage() {
     triggers: false,
     riskFactors: false
   });
+  const [isDiagnosing, setIsDiagnosing] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -312,10 +314,24 @@ export default function QuestionsPage() {
         setAssessmentProgress(data.assessedAreas);
       }
 
-      // Check if we've covered all areas
-      const allAreasAssessed = Object.values(data.assessedAreas || {}).every(area => area);
+      // Check if we've covered all areas and have enough information
+      const allAreasAssessed = data.assessedAreas ? 
+        Object.values(data.assessedAreas).every(area => area) : 
+        false;
       
-      if (allAreasAssessed && !isPhase2) {
+      const shouldTransitionToPhase2 = allAreasAssessed && !isPhase2;
+      const shouldFinishAssessment = isPhase2 && data.readyForDiagnosis === true;
+
+      console.log('Assessment state:', {
+        isPhase2,
+        allAreasAssessed,
+        shouldTransitionToPhase2,
+        shouldFinishAssessment,
+        readyForDiagnosis: data.readyForDiagnosis,
+        responseCount: updatedResponses.length
+      });
+      
+      if (shouldTransitionToPhase2) {
         // Transition to phase 2
         setIsPhase2(true);
         const phase2Response = await fetch('/api/chatgpt', {
@@ -351,9 +367,10 @@ export default function QuestionsPage() {
         setFollowUpQuestions(phase2Data.questions);
         setCurrentQuestionIndex(0);
         return;
-      } else if (allAreasAssessed && isPhase2) {
+      } else if (shouldFinishAssessment) {
         // Save responses to localStorage before redirecting
         localStorage.setItem(STORAGE_KEYS.RESPONSES, JSON.stringify(updatedResponses));
+        setIsDiagnosing(true);
         
         try {
           // Send responses to diagnosis endpoint
@@ -425,8 +442,16 @@ export default function QuestionsPage() {
   };
 
   const calculateProgress = () => {
-    if (totalPredictedQuestions === 0) return 0;
-    return Math.min(100, Math.round((currentQuestionNumber / totalPredictedQuestions) * 100));
+    if (isDiagnosing) return 100;
+    if (!isPhase2) {
+      // In phase 1, progress is based on assessed areas
+      const assessedCount = Object.values(assessmentProgress).filter(Boolean).length;
+      return Math.round((assessedCount / 5) * 50); // Phase 1 is 0-50%
+    } else {
+      // In phase 2, progress is based on response count and readyForDiagnosis
+      const responseProgress = Math.min(((responses.length - 5) / 5) * 50, 50); // Phase 2 is 50-100%
+      return 50 + responseProgress;
+    }
   };
 
   const handleGoBackToQuestion = async (index: number) => {
@@ -695,6 +720,30 @@ export default function QuestionsPage() {
     );
   }
 
+  if (isDiagnosing) {
+    return (
+      <div className="fixed inset-0 bg-gray-50 bg-opacity-90 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full mx-4 text-center">
+          <div className="mb-6">
+            <div className="w-16 h-16 mx-auto mb-4">
+              <svg className="animate-spin w-full h-full text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">Processing Your Diagnosis</h3>
+            <p className="text-gray-600">
+              Our AI is analyzing your responses and calculating the most accurate diagnosis. This may take a few moments...
+            </p>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
+            <div className="bg-blue-600 h-2 rounded-full animate-pulse" style={{ width: '100%' }}></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const renderContent = () => {
     switch (currentStep) {
       case 0:
@@ -848,21 +897,15 @@ export default function QuestionsPage() {
             <div className="bg-gray-50 rounded-2xl p-6 transition-all duration-200">
               {/* Progress Bar */}
               <div className="mb-6">
-                <div className="flex justify-between mb-1">
-                  <div>
-                    <span className="text-base font-medium text-blue-700">Assessment Progress</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-xs font-semibold inline-block text-blue-600">
-                      {calculateProgress()}%
-                    </span>
-                  </div>
+                <div className="flex justify-between text-sm text-gray-600 mb-2">
+                  <span>{isPhase2 ? 'Detailed Assessment' : 'Initial Assessment'}</span>
+                  <span>{calculateProgress()}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                <div className="w-full bg-gray-200 rounded-full h-2">
                   <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-500"
                     style={{ width: `${calculateProgress()}%` }}
-                    className="bg-blue-600 h-2.5 rounded-full transition-all duration-500 ease-in-out"
-                  />
+                  ></div>
                 </div>
                 <div className="text-sm text-gray-500 text-center mt-2">
                   Question {currentQuestionNumber} of ~{totalPredictedQuestions}
@@ -973,7 +1016,7 @@ export default function QuestionsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-4xl mx-auto">
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
           <div className="px-6 py-8 sm:p-10">

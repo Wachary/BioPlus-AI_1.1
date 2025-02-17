@@ -69,6 +69,49 @@ function summarizeResponses(responses: any[]) {
   return summary;
 }
 
+// Helper function to determine if we have enough information for diagnosis
+function isReadyForDiagnosis(responses: any[], assessedAreas: any) {
+  // Must have at least 5 responses
+  if (!responses || responses.length < 5) {
+    return false;
+  }
+
+  // All assessment areas must be covered
+  if (!isInitialAssessmentComplete(assessedAreas)) {
+    return false;
+  }
+
+  // Check for minimum responses in each area
+  const areaResponses = {
+    location: 0,
+    characterSeverity: 0,
+    timing: 0,
+    triggers: 0,
+    riskFactors: 0
+  };
+
+  const keywords = {
+    location: ['where', 'location', 'area', 'spot', 'place', 'side'],
+    characterSeverity: ['severity', 'pain level', 'intensity', 'type of', 'nature of', 'character', 'how severe', 'describe the'],
+    timing: ['when', 'how long', 'duration', 'often', 'frequency', 'start', 'began'],
+    triggers: ['trigger', 'worse', 'better', 'improve', 'aggravate', 'affect', 'impact'],
+    riskFactors: ['history', 'condition', 'medical', 'risk', 'family', 'previous', 'existing']
+  };
+
+  // Count responses for each area
+  responses.forEach(response => {
+    const questionLower = response.question.toLowerCase();
+    Object.entries(keywords).forEach(([area, words]) => {
+      if (words.some(word => questionLower.includes(word))) {
+        areaResponses[area as keyof typeof areaResponses]++;
+      }
+    });
+  });
+
+  // Each area should have at least one detailed response
+  return Object.values(areaResponses).every(count => count > 0);
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -84,9 +127,12 @@ export async function POST(req: Request) {
       );
     }
 
-    // Only check assessment areas in phase 1
-    const assessedAreas = !isPhase2 ? getAssessedAreas(previousResponses || []) : null;
-    const initialAssessmentComplete = !isPhase2 ? isInitialAssessmentComplete(assessedAreas) : true;
+    // Always calculate assessed areas to track progress
+    const assessedAreas = getAssessedAreas(previousResponses || []);
+    const initialAssessmentComplete = isInitialAssessmentComplete(assessedAreas);
+    
+    // Check if we're ready for diagnosis using the new function
+    const readyForDiagnosis = isPhase2 && isReadyForDiagnosis(previousResponses, assessedAreas);
 
     // Create system message based on phase
     const systemMessage = {
@@ -97,6 +143,18 @@ export async function POST(req: Request) {
 
       Previous responses: ${JSON.stringify(previousResponses)}
       Current phase: ${isPhase2 ? 'Phase 2 (Detailed Assessment)' : 'Phase 1 (Initial Assessment)'}
+      Areas assessed: ${JSON.stringify(assessedAreas)}
+      Ready for diagnosis: ${readyForDiagnosis}
+
+      In Phase 1, focus on gathering basic information about all assessment areas.
+      In Phase 2, ask detailed follow-up questions based on the initial responses.
+      Set readyForDiagnosis to true only when you have gathered enough detailed information for a diagnosis.
+
+      Guidelines for setting readyForDiagnosis:
+      1. Must have at least 5 total responses
+      2. Must have covered all assessment areas
+      3. Must have at least one detailed response in each area
+      4. Must be in Phase 2
 
       Respond in the following JSON format:
       {
@@ -112,7 +170,8 @@ export async function POST(req: Request) {
           "riskFactors": boolean
         },
         "totalPredictedQuestions": number,
-        "currentQuestionNumber": number
+        "currentQuestionNumber": number,
+        "readyForDiagnosis": boolean
       }`
     };
 
@@ -139,9 +198,9 @@ export async function POST(req: Request) {
             role: 'user',
             content: `Generate the next most relevant follow-up question. ${
               isPhase2 
-                ? 'Make it specific and predictive based on the collected information.' 
+                ? `Ask detailed follow-up questions based on the collected information. Focus on any concerning symptoms or unclear responses. Set readyForDiagnosis to true only when you have gathered enough information for a diagnosis.` 
                 : `Focus on uncovered areas: ${
-                    Object.entries(assessedAreas || {})
+                    Object.entries(assessedAreas)
                       .filter(([_, assessed]) => !assessed)
                       .map(([area]) => area)
                       .join(', ')
@@ -196,11 +255,31 @@ export async function POST(req: Request) {
         };
       });
 
+      // In phase 2, check if we have enough information for diagnosis
+      if (isPhase2) {
+        const responseCount = (previousResponses || []).length;
+        const hasEnoughResponses = responseCount >= 5; // Minimum responses needed
+        const hasKeyAreas = assessedAreas && Object.values(assessedAreas).every(area => area);
+        
+        // Set readyForDiagnosis if we have enough information
+        parsedResponse.readyForDiagnosis = hasEnoughResponses && hasKeyAreas;
+        
+        // Update progress tracking for phase 2
+        parsedResponse.totalPredictedQuestions = 10; // Typical total questions
+        parsedResponse.currentQuestionNumber = Math.min(responseCount, 10);
+      } else {
+        parsedResponse.readyForDiagnosis = false;
+        
+        // Update progress tracking for phase 1
+        const assessedCount = Object.values(assessedAreas).filter(Boolean).length;
+        parsedResponse.totalPredictedQuestions = 5;
+        parsedResponse.currentQuestionNumber = assessedCount;
+      }
+
       // Only include assessedAreas in phase 1
       const response = {
         ...parsedResponse,
-        ...(isPhase2 ? {} : { assessedAreas }),
-        isPhase2
+        assessedAreas: !isPhase2 ? assessedAreas : undefined,
       };
 
       return NextResponse.json(response);

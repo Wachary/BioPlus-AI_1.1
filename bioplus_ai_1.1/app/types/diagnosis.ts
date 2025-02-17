@@ -17,5 +17,12 @@ export interface DiagnosisMatch {
   condition: string;
   similarity: number;
   confidence: number;
-  responses: QuestionResponse[];
+  recommendations: Array<{
+    text: string;
+    urgency: 'low' | 'medium' | 'high';
+  }>;
+}
+
+export interface DiagnosisResponse {
+  diagnoses: DiagnosisMatch[];
 }

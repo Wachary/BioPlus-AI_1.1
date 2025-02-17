@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { findBestDiagnosisMatch } from '@/app/utils/diagnosis';
+import { findTopDiagnoses } from '@/app/utils/diagnosis';
 import { QuestionResponse } from '@/app/types/diagnosis';
 
 const openai = new OpenAI({
@@ -33,24 +33,25 @@ export async function POST(request: Request) {
       );
     }
 
-    // Find best diagnosis match using vector-based algorithm
-    const bestMatch = await findBestDiagnosisMatch(responses);
+    // Get top 3 diagnoses
+    const diagnoses = await findTopDiagnoses(responses);
 
     // Format patient responses for GPT context
     const formattedResponses = responses
       .map((r: QuestionResponse) => `Q: ${r.question}\nA: ${r.answer}`)
       .join('\n');
 
-    // Get detailed recommendations based on the best match
-    const recommendationsPrompt = `As a medical AI assistant, analyze these patient responses and provide specific recommendations for a diagnosis of ${bestMatch.condition}.
+    // Get detailed recommendations for each diagnosis
+    const recommendationsPromises = diagnoses.map(async (diagnosis) => {
+      const recommendationsPrompt = `As a medical AI assistant, analyze these patient responses and provide specific recommendations for a diagnosis of ${diagnosis.condition}.
 
 Patient Responses:
 ${formattedResponses}
 
 Key Metrics:
-- Diagnosis: ${bestMatch.condition}
-- Similarity Score: ${Math.round(bestMatch.similarity * 100)}%
-- Initial Confidence: ${Math.round(bestMatch.confidence)}%
+- Diagnosis: ${diagnosis.condition}
+- Similarity Score: ${Math.round(diagnosis.similarity * 100)}%
+- Initial Confidence: ${Math.round(diagnosis.confidence)}%
 
 Based on this information, provide detailed recommendations considering:
 1. The severity and urgency of the condition
@@ -60,9 +61,9 @@ Based on this information, provide detailed recommendations considering:
 
 Format your response as JSON with this EXACT structure:
 {
-  "condition": "${bestMatch.condition}",
-  "confidence": ${bestMatch.confidence},
-  "similarity": ${bestMatch.similarity},
+  "condition": "${diagnosis.condition}",
+  "confidence": ${diagnosis.confidence},
+  "similarity": ${diagnosis.similarity},
   "recommendations": [
     {
       "text": "Clear, actionable recommendation",
@@ -78,30 +79,34 @@ IMPORTANT:
 - Maintain all numerical values (confidence, similarity) from the input
 - DO NOT change the diagnosis or metrics provided`;
 
-    const completion = await openai.chat.completions.create({
-      messages: [{ role: "user", content: recommendationsPrompt }],
-      model: "gpt-4-1106-preview",
-      temperature: 0.3,
-      response_format: { type: "json_object" }
+      const completion = await openai.chat.completions.create({
+        messages: [{ role: "user", content: recommendationsPrompt }],
+        model: "gpt-4-1106-preview",
+        temperature: 0.3,
+        response_format: { type: "json_object" }
+      });
+
+      const responseContent = completion.choices[0]?.message?.content;
+      if (!responseContent) {
+        throw new Error('No response from OpenAI');
+      }
+
+      const recommendations = JSON.parse(responseContent);
+
+      // Validate the response format
+      if (!recommendations.condition || 
+          typeof recommendations.confidence !== 'number' ||
+          typeof recommendations.similarity !== 'number' ||
+          !Array.isArray(recommendations.recommendations)) {
+        throw new Error('Invalid recommendations format from OpenAI');
+      }
+
+      return recommendations;
     });
 
-    const responseContent = completion.choices[0]?.message?.content;
-    if (!responseContent) {
-      throw new Error('No response from OpenAI');
-    }
+    const recommendations = await Promise.all(recommendationsPromises);
 
-    const recommendations = JSON.parse(responseContent);
-
-    // Validate the response format
-    if (!recommendations.condition || 
-        typeof recommendations.confidence !== 'number' ||
-        typeof recommendations.similarity !== 'number' ||
-        !Array.isArray(recommendations.recommendations)) {
-      throw new Error('Invalid recommendations format from OpenAI');
-    }
-
-    return NextResponse.json(recommendations);
-
+    return NextResponse.json({ diagnoses: recommendations });
   } catch (error) {
     console.error('Error in diagnose route:', error);
     return NextResponse.json(

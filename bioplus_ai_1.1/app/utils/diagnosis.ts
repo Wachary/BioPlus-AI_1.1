@@ -10,8 +10,15 @@ const openai = new OpenAI({
  */
 function answerToVector(response: QuestionResponse): number {
   const { answer, questionData } = response;
+  
+  // Handle 'Other' responses
+  if (answer === 'Other' || !questionData.options.includes(answer)) {
+    return 0.5; // Neutral value for custom/other responses
+  }
+
+  // Get the index (0-based) and convert to a value between 0 and 1
   const optionIndex = questionData.options.indexOf(answer);
-  return optionIndex === -1 ? 0 : (optionIndex + 1) / questionData.options.length;
+  return (optionIndex + 1) / (questionData.options.length);
 }
 
 /**
@@ -26,13 +33,20 @@ function generateResponseVector(responses: QuestionResponse[]): number[] {
  */
 function cosineSimilarity(vec1: number[], vec2: number[]): number {
   if (vec1.length !== vec2.length) return 0;
+  if (vec1.length === 0) return 0;
 
+  // Calculate dot product
   const dotProduct = vec1.reduce((sum, val, i) => sum + val * vec2[i], 0);
+  
+  // Calculate magnitudes
   const mag1 = Math.sqrt(vec1.reduce((sum, val) => sum + val * val, 0));
   const mag2 = Math.sqrt(vec2.reduce((sum, val) => sum + val * val, 0));
 
+  // Avoid division by zero
   if (mag1 === 0 || mag2 === 0) return 0;
-  return dotProduct / (mag1 * mag2);
+
+  // Normalize the result to be between 0 and 1
+  return (dotProduct / (mag1 * mag2) + 1) / 2;
 }
 
 /**
@@ -85,75 +99,39 @@ Format your response as JSON:
 }
 
 /**
- * Calculates confidence based on multiple factors:
- * 1. Vector similarity with known condition patterns
- * 2. Response completeness and quality
- * 3. Symptom consistency and specificity
- * 4. Number of matching symptoms
+ * Calculates confidence based on:
+ * 1. Baseline confidence (50%)
+ * 2. Normalized similarity score (0-50%)
  */
 function calculateConfidence(similarity: number, responses: QuestionResponse[]): number {
-  // Start with base confidence from vector similarity (0-100)
-  let confidence = similarity * 100;
-
-  // 1. Response Quality Score (0-1)
-  const responseQuality = responses.reduce((score, r) => {
-    // Penalize vague or uncertain answers
-    if (r.answer.toLowerCase().includes('not sure') || 
-        r.answer.toLowerCase().includes('maybe') ||
-        r.answer.toLowerCase().includes("don't know")) {
-      score -= 0.1;
-    }
-    // Reward specific, detailed answers
-    if (r.answer.length > 10 && !r.answer.toLowerCase().includes('not sure')) {
-      score += 0.05;
-    }
-    return score;
-  }, 1);
-
-  // 2. Symptom Consistency Score (0-1)
-  const symptomGroups = responses.reduce((groups, r) => {
-    const answer = r.answer.toLowerCase();
-    // Group related symptoms (e.g., pain-related, timing-related)
-    if (answer.includes('pain') || answer.includes('ache')) groups.pain = (groups.pain || 0) + 1;
-    if (answer.includes('time') || answer.includes('duration')) groups.timing = (groups.timing || 0) + 1;
-    if (answer.includes('severity') || answer.includes('intensity')) groups.severity = (groups.severity || 0) + 1;
-    return groups;
-  }, {} as Record<string, number>);
+  // Start with baseline confidence of 50%
+  const baselineConfidence = 50;
   
-  const consistencyScore = Object.values(symptomGroups).length > 0 ? 
-    Object.values(symptomGroups).reduce((a, b) => a + b, 0) / responses.length : 0.5;
-
-  // 3. Response Completeness (0-1)
-  const completenessScore = responses.filter(r => r.answer && r.answer.length > 0).length / responses.length;
-
-  // 4. Calculate final confidence score
-  confidence *= (
-    responseQuality * 0.3 +    // 30% weight for response quality
-    consistencyScore * 0.3 +   // 30% weight for symptom consistency
-    completenessScore * 0.4    // 40% weight for completeness
-  );
-
-  // 5. Additional adjustments
-  if (responses.length < 3) confidence *= 0.8; // Penalize very short assessments
-  if (similarity < 0.3) confidence *= 0.7;     // Penalize very low similarity matches
+  // Add normalized similarity score (0-50%)
+  const similarityConfidence = similarity * 50;
+  
+  // Total confidence is baseline + similarity contribution
+  const confidence = baselineConfidence + similarityConfidence;
 
   // Ensure confidence is between 0 and 100
   return Math.round(Math.min(Math.max(confidence, 0), 100));
 }
 
 /**
- * Main function to find the best diagnosis match using vector similarity
+ * Main function to find the top 3 diagnosis matches using vector similarity
  */
-export async function findBestDiagnosisMatch(responses: QuestionResponse[]): Promise<DiagnosisMatch> {
+export async function findTopDiagnoses(responses: QuestionResponse[]): Promise<DiagnosisMatch[]> {
   // Generate user's response vector
   const userVector = generateResponseVector(responses);
 
   // Get potential diagnosis vectors
   const diagnosisVectors = await generateDiagnosisVectors(responses);
 
-  // Calculate similarities and find best match
+  // Calculate similarities and find top matches
   const matches = diagnosisVectors.map(diagnosis => {
-    const similarity = cosineSimilarity(userVector, diagnosis.vector);
+    // Ensure vectors are of the same length
+    const diagnosisVector = diagnosis.vector.slice(0, userVector.length);
+    const similarity = cosineSimilarity(userVector, diagnosisVector);
     const confidence = calculateConfidence(similarity, responses);
 
     return {
@@ -164,7 +142,8 @@ export async function findBestDiagnosisMatch(responses: QuestionResponse[]): Pro
     };
   });
 
-  // Sort by similarity and return best match
-  matches.sort((a, b) => b.similarity - a.similarity);
-  return matches[0];
+  // Sort by confidence and return top 3
+  return matches
+    .sort((a, b) => b.confidence - a.confidence)
+    .slice(0, 3);
 }
