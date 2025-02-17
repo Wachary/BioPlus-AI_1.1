@@ -48,9 +48,6 @@ Implement RLS for fine-grained data access control.
 API:
 OpenAI's ChatGPT API: For dynamic question generation and conversational AI.
 Add API keys to a secure .env.local file:
-NEXT_PUBLIC_SUPABASE_URL=https://xotyjqngbsbpxyfinnwe.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhvdHlqcW5nYnNicHh5ZmlubndlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzI4NDY3NzcsImV4cCI6MjA0ODQyMjc3N30.BEzV83dOkY35XlAfQgCvpUuyqbHFCkVRQwuYXCcM2Pc
-OPENAI_API_KEY=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
 Database
 Primary Database:
 Supabase (PostgreSQL): Stores user data, interactions, and diagnosis mappings.
