@@ -71,7 +71,13 @@ function summarizeResponses(responses: any[]) {
 
 // Helper function to check for contradictions in responses
 function findContradictions(responses: any[]) {
-  const contradictions = [];
+  interface Contradiction {
+    category: string;
+    response1: any;
+    response2: any;
+  }
+  
+  const contradictions: Contradiction[] = [];
   
   // Common contradiction patterns to check
   const patterns = {
