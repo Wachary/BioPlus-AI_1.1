@@ -57,7 +57,9 @@ const STORAGE_KEYS = {
   CURRENT_STEP: 'bioplus_current_step',
   DIAGNOSIS: 'bioplus_diagnosis',
   PHASE: 'bioplus_phase'
-};
+} as const;
+
+type StorageKey = keyof typeof STORAGE_KEYS;
 
 const clearStorageData = () => {
   Object.values(STORAGE_KEYS).forEach(key => {
@@ -415,7 +417,7 @@ export default function QuestionsPage() {
           router.push('/dashboard/results');
           
           // Clear other assessment data
-          Object.keys(STORAGE_KEYS).forEach(key => {
+          (Object.keys(STORAGE_KEYS) as StorageKey[]).forEach(key => {
             if (key !== 'RESPONSES') {
               localStorage.removeItem(STORAGE_KEYS[key]);
             }
