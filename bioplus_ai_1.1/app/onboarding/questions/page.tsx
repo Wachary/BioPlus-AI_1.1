@@ -220,6 +220,7 @@ export default function QuestionsPage() {
     phase2: boolean
   ): Promise<ChatGPTResponse> => {
     try {
+      console.log('Sending request with:', { category, symptom, phase2 });
       const response = await fetch('/api/chatgpt', {
         method: 'POST',
         headers: {
@@ -234,12 +235,20 @@ export default function QuestionsPage() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to get follow-up questions');
+        const errorData = await response.json().catch(() => null);
+        console.error('API Error:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData
+        });
+        throw new Error(`API Error: ${response.status} - ${errorData?.error || response.statusText}`);
       }
 
       const data: ChatGPTResponse = await response.json();
+      console.log('Received response:', data);
       
       if (!data.questions || !Array.isArray(data.questions)) {
+        console.error('Invalid response format:', data);
         throw new Error('Invalid response format from server');
       }
 
@@ -248,11 +257,9 @@ export default function QuestionsPage() {
       
       // Update progress tracking
       if (data.totalPredictedQuestions) {
-        // Store the raw predicted questions count
         setTotalPredictedQuestions(Math.max(1, data.totalPredictedQuestions));
       }
       if (data.currentQuestionNumber) {
-        // Store the raw current question number
         setCurrentQuestionNumber(Math.max(0, data.currentQuestionNumber));
       }
       
@@ -263,7 +270,7 @@ export default function QuestionsPage() {
 
       return data;
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error in fetchNextQuestion:', error);
       setError(error instanceof Error ? error.message : 'Failed to get follow-up questions');
       throw error;
     }
@@ -334,23 +341,27 @@ export default function QuestionsPage() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.details || 'Failed to get follow-up questions');
+        const errorData = await response.json().catch(() => null);
+        console.error('API Error:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData
+        });
+        throw new Error(`API Error: ${response.status} - ${errorData?.error || response.statusText}`);
       }
 
       const data: ChatGPTResponse = await response.json();
       
       if (!data.questions || !Array.isArray(data.questions)) {
+        console.error('Invalid response format:', data);
         throw new Error('Invalid response format from server');
       }
 
       // Update progress tracking
       if (data.totalPredictedQuestions) {
-        // Store the raw predicted questions count
         setTotalPredictedQuestions(Math.max(1, data.totalPredictedQuestions));
       }
       if (data.currentQuestionNumber) {
-        // Store the raw current question number
         setCurrentQuestionNumber(Math.max(0, data.currentQuestionNumber));
       }
 
@@ -396,11 +407,18 @@ export default function QuestionsPage() {
         });
 
         if (!phase2Response.ok) {
-          throw new Error('Failed to transition to phase 2');
+          const errorData = await phase2Response.json().catch(() => null);
+          console.error('API Error:', {
+            status: phase2Response.status,
+            statusText: phase2Response.statusText,
+            error: errorData
+          });
+          throw new Error(`API Error: ${phase2Response.status} - ${errorData?.error || phase2Response.statusText}`);
         }
 
         const phase2Data: ChatGPTResponse = await phase2Response.json();
         if (!phase2Data.questions || !Array.isArray(phase2Data.questions)) {
+          console.error('Invalid response format:', phase2Data);
           throw new Error('Invalid response format from server');
         }
 
@@ -550,13 +568,19 @@ export default function QuestionsPage() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.details || 'Failed to get follow-up questions');
+        const errorData = await response.json().catch(() => null);
+        console.error('API Error:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData
+        });
+        throw new Error(`API Error: ${response.status} - ${errorData?.error || response.statusText}`);
       }
 
       const data: ChatGPTResponse = await response.json();
       
       if (!data.questions || !Array.isArray(data.questions)) {
+        console.error('Invalid response format:', data);
         throw new Error('Invalid response format from server');
       }
 
