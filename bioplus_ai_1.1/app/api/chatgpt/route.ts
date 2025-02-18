@@ -1,16 +1,17 @@
-import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import OpenAI from 'openai';
-import { type NextRequest } from 'next/server';
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY || ''
+});
+
+export const runtime = 'edge';
 
 // Validate OpenAI API key
 if (!process.env.OPENAI_API_KEY) {
   console.error('OPENAI_API_KEY is not set in environment variables');
   throw new Error('OpenAI API key is not configured');
 }
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
 
 // Helper function to determine which assessment areas have been covered
 function getAssessedAreas(responses: any[]) {
@@ -184,25 +185,32 @@ function isReadyForDiagnosis(responses: any[], assessedAreas: any) {
   return hasEnoughResponses && !hasContradictions;
 }
 
-export async function POST(req: Request) {
-  if (!process.env.OPENAI_API_KEY) {
-    console.error('OPENAI_API_KEY is not set');
-    return NextResponse.json(
-      { error: 'OpenAI API key is not configured' },
-      { status: 500 }
-    );
-  }
-
+export async function POST(request: NextRequest) {
   try {
-    const body = await req.json();
-    console.log('Received request:', body);
+    const data = await request.json();
+    const { category, selection, previousResponses, isPhase2 } = data;
 
-    const { category, selection, previousResponses, isPhase2 } = body;
+    if (!process.env.OPENAI_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: 'OpenAI API key not configured' }),
+        {
+          status: 500,
+          headers: {
+            'content-type': 'application/json',
+          },
+        }
+      );
+    }
 
     if (!category || !selection) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields' }),
+        {
+          status: 400,
+          headers: {
+            'content-type': 'application/json',
+          },
+        }
       );
     }
 
@@ -382,20 +390,38 @@ export async function POST(req: Request) {
         assessedAreas: !isPhase2 ? assessedAreas : undefined,
       };
 
-      return NextResponse.json(response);
+      return new Response(
+        JSON.stringify(response),
+        {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+          },
+        }
+      );
       
     } catch (openAiError: any) {
       console.error('OpenAI API Error:', openAiError);
-      return NextResponse.json(
-        { error: 'Failed to generate questions', details: openAiError.message },
-        { status: 500 }
+      return new Response(
+        JSON.stringify({ error: 'Failed to generate questions', details: openAiError.message }),
+        {
+          status: 500,
+          headers: {
+            'content-type': 'application/json',
+          },
+        }
       );
     }
   } catch (error: any) {
     console.error('Server Error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error', details: error.message },
-      { status: 500 }
+    return new Response(
+      JSON.stringify({ error: 'Internal server error', details: error.message }),
+      {
+        status: 500,
+        headers: {
+          'content-type': 'application/json',
+        },
+      }
     );
   }
 }
