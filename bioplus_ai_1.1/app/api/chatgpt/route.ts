@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { type NextRequest } from 'next/server';
 
 // Validate OpenAI API key
 if (!process.env.OPENAI_API_KEY) {
@@ -183,9 +184,30 @@ function isReadyForDiagnosis(responses: any[], assessedAreas: any) {
   return hasEnoughResponses && !hasContradictions;
 }
 
-export async function POST(req: Request) {
+export async function OPTIONS(request: NextRequest) {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  });
+}
+
+export async function POST(request: NextRequest) {
+  console.log('API route called');
+  
+  // Add CORS headers to the response
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
+
   try {
-    const body = await req.json();
+    console.log('OpenAI Key exists:', !!process.env.OPENAI_API_KEY);
+    const body = await request.json();
     console.log('Request body:', body);
 
     const { category, selection, previousResponses, isPhase2 } = body;
@@ -194,7 +216,7 @@ export async function POST(req: Request) {
       console.error('Missing required fields:', { category, selection });
       return NextResponse.json(
         { error: 'Missing required fields' },
-        { status: 400 }
+        { status: 400, headers }
       );
     }
 
@@ -374,20 +396,20 @@ export async function POST(req: Request) {
         assessedAreas: !isPhase2 ? assessedAreas : undefined,
       };
 
-      return NextResponse.json(response);
+      return NextResponse.json(response, { headers });
       
     } catch (openAiError: any) {
       console.error('OpenAI API Error:', openAiError);
       return NextResponse.json(
         { error: 'Failed to generate questions', details: openAiError.message },
-        { status: 500 }
+        { status: 500, headers }
       );
     }
   } catch (error: any) {
     console.error('Server Error:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
-      { status: 500 }
+      { status: 500, headers }
     );
   }
 }
